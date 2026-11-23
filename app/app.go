@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"9itchi-statistics-api/core"
 	"9itchi-statistics-api/repositories"
 	"9itchi-statistics-api/router"
 	"9itchi-statistics-api/services"
@@ -20,9 +21,11 @@ import (
 )
 
 type App struct {
-	Config utils.AppConfig
-	Router *gin.Engine
-	Repos  *repositories.Repositories
+	Config     utils.AppConfig
+	Router     *gin.Engine
+	Repos      *repositories.Repositories
+	Consumer   core.EventConsumer
+	Statistics services.StatisticsService
 }
 
 func New() *App {
@@ -45,15 +48,25 @@ func (app *App) setup() {
 		log.Fatalf("repositories: %v", err)
 	}
 
-	servicesWrapper := services.InitServices(config, repos)
+	servicesWrapper := services.InitServices(repos)
 
 	app.Config = config
 	app.Repos = repos
+	app.Consumer = servicesWrapper.Consumer
+	app.Statistics = servicesWrapper.Statistics
 	app.Router = router.InitializeRouter(servicesWrapper)
 }
 
 // Run serves until SIGINT/SIGTERM, then drains requests and closes the database pool.
 func (app *App) Run() {
+	workerCtx, stopWorkers := context.WithCancel(context.Background())
+	consumerDone := make(chan error, 1)
+	go func() {
+		consumerDone <- app.Consumer.Run(workerCtx, func(ctx context.Context, event string, payload map[string]any) error {
+			return app.Statistics.ConsumeEvent(ctx, event, payload)
+		})
+	}()
+
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", app.Config.Port),
 		Handler:           app.Router,
@@ -71,6 +84,15 @@ func (app *App) Run() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
+	stopWorkers()
 	_ = srv.Shutdown(ctx)
+	select {
+	case err := <-consumerDone:
+		if err != nil {
+			log.Printf("event consumer: %v", err)
+		}
+	case <-ctx.Done():
+		log.Printf("event consumer shutdown timed out")
+	}
 	app.Repos.Close()
 }

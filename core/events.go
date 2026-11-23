@@ -24,6 +24,19 @@ type Publisher interface {
 	Publish(ctx context.Context, event string, payload any) error
 }
 
+type EventHandler func(context.Context, string, map[string]any) error
+
+type EventConsumer interface {
+	Run(ctx context.Context, handler EventHandler) error
+}
+
+type NoopEventConsumer struct{}
+
+func (NoopEventConsumer) Run(ctx context.Context, _ EventHandler) error {
+	<-ctx.Done()
+	return nil
+}
+
 // LogPublisher logs the event name only (never the payload). Default until RabbitMQ is wired.
 type LogPublisher struct{}
 
