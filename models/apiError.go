@@ -18,8 +18,5 @@ func NotImplemented() *ApiError {
 }
 
 func FormatError(c *gin.Context, apiError *ApiError) {
-	c.JSON(apiError.Code, gin.H{
-		"error":  apiError.Error.Error(),
-		"status": apiError.Code,
-	})
+	c.JSON(apiError.Code, gin.H{"error": apiError.Error.Error()})
 }

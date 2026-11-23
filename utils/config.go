@@ -20,9 +20,6 @@ type AppConfig struct {
 	// InternalAPIKeyRequired (env INTERNAL_API_KEY_REQUIRED, default true); false = log and allow.
 	InternalAPIKeyRequired bool
 	RabbitMQURL            string
-	// Peer service base URLs.
-	AccountAPIURL  string
-	PaymentsAPIURL string
 }
 
 // LoadConfig loads configuration from environment variables.
@@ -37,8 +34,6 @@ func LoadConfig() AppConfig {
 		InternalAPIKey:         getStringWithDefault("INTERNAL_API_KEY", ""),
 		InternalAPIKeyRequired: getBoolWithDefault("INTERNAL_API_KEY_REQUIRED", true),
 		RabbitMQURL:            getStringWithDefault("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
-		AccountAPIURL:          getStringWithDefault("ACCOUNT_API_URL", "http://9itchi-account-api:8081"),
-		PaymentsAPIURL:         getStringWithDefault("PAYMENTS_API_URL", "http://9itchi-payments-api:8089"),
 	}
 }
 

@@ -33,6 +33,12 @@ func initializeRoutes(r *gin.Engine, services *services.Services) {
 		adminGroup.GET("/admin/statistics/revenue", handlers.Revenue(services.Statistics))
 	}
 
+	internalGroup := r.Group("/")
+	internalGroup.Use(InternalAPIKeyMiddleware())
+	{
+		internalGroup.POST("/internal/events", handlers.RecordEvent(services.Statistics))
+	}
+
 	// Fallback
 	r.NoRoute(handlers.NoRoute)
 }
