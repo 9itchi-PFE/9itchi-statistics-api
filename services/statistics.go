@@ -28,6 +28,8 @@ const (
 	metricJobsMatched         = "jobs_matched"
 	metricSubscriptionCreated = "subscription_created"
 	metricPaymentCompleted    = "payment_completed"
+	// metricRevenueMillimes sums what the completed payments brought, in millimes (1/1000 TND).
+	metricRevenueMillimes = "revenue_millimes"
 )
 
 type eventRecorder func(context.Context, time.Time) (*db.Metric, error)
@@ -104,7 +106,32 @@ func (s *statisticsService) ConsumeEvent(ctx context.Context, event string, payl
 	if apiErr != nil {
 		return apiErr.Error
 	}
+	// A completed payment also counts for what it brought. A payment of 0 (a code that covers the price) adds nothing.
+	if event == core.EventPaymentCompleted {
+		if amount := millimesOf(payload["amount_millimes"]); amount > 0 {
+			at := time.Now()
+			if req.TS != nil {
+				at = *req.TS
+			}
+			if _, err := s.repo.Add(ctx, metricRevenueMillimes, at, amount); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
+}
+
+// millimesOf reads an amount from an event: a JSON number, or an integer when the event did not travel.
+func millimesOf(v any) int64 {
+	switch n := v.(type) {
+	case float64:
+		return int64(n)
+	case int64:
+		return n
+	case int:
+		return int64(n)
+	}
+	return 0
 }
 
 func (s *statisticsService) Overview(ctx context.Context, q api.DateRangeQuery) (*api.DashboardResponse, *models.ApiError) {
@@ -124,7 +151,7 @@ func (s *statisticsService) Subscriptions(ctx context.Context, q api.DateRangeQu
 }
 
 func (s *statisticsService) Revenue(ctx context.Context, q api.DateRangeQuery) (*api.DashboardResponse, *models.ApiError) {
-	return s.dashboard(ctx, q, []string{metricPaymentCompleted})
+	return s.dashboard(ctx, q, []string{metricPaymentCompleted, metricRevenueMillimes})
 }
 
 func (s *statisticsService) dashboard(ctx context.Context, q api.DateRangeQuery, names []string) (*api.DashboardResponse, *models.ApiError) {
@@ -202,6 +229,7 @@ func allMetricNames() []string {
 		metricJobsMatched,
 		metricSubscriptionCreated,
 		metricPaymentCompleted,
+		metricRevenueMillimes,
 	}
 	sort.Strings(names)
 	return names
