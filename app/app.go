@@ -48,7 +48,7 @@ func (app *App) setup() {
 		log.Fatalf("repositories: %v", err)
 	}
 
-	servicesWrapper := services.InitServices(repos)
+	servicesWrapper := services.InitServices(config, repos)
 
 	app.Config = config
 	app.Repos = repos
