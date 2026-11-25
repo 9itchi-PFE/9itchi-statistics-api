@@ -13,6 +13,7 @@ const EventsQueue = "statistics-api.events"
 var CountedEvents = []string{
 	core.EventUserRegistered, core.EventEmailSent, core.EventEmailFailed, core.EventEmailOpened,
 	core.EventJobsMatched, core.EventSubscriptionCreated, core.EventPaymentCompleted,
+	core.EventCVFirstImported, core.EventPreferencesFirstSaved, core.EventApplicationFirstSent,
 }
 
 // Services holds service implementations and the peer clients they call.

@@ -17,6 +17,11 @@ const (
 	EventJobsMatched         = "jobs.matched"
 	EventSubscriptionCreated = "subscription.created"
 	EventPaymentCompleted    = "payment.completed"
+	// The first time a student does something (each service publishes it once per student): the steps between
+	// signing up and subscribing. No user is stored here, only how many did it each day.
+	EventCVFirstImported       = "cv.first_imported"
+	EventPreferencesFirstSaved = "preferences.first_saved"
+	EventApplicationFirstSent  = "application.first_sent"
 )
 
 // Publisher sends domain events. Swap LogPublisher for a RabbitMQ implementation without touching services.
