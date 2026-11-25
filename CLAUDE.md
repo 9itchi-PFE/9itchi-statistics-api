@@ -1,6 +1,6 @@
 # 9itchi Statistics API
 
-Admin dashboard statistics: clients, registrations, emails sent/opened, active subscriptions, revenue. Consumes events, caches in Redis.
+Admin dashboard statistics: clients, registrations, emails sent/opened, active subscriptions, revenue. Consumes events and keeps the figures in PostgreSQL (there is no Redis).
 
 ## Stack
 Go, Gin, PostgreSQL (db `statistics`, pgx + goose migrations), Viper config, Zap logger. Peers over HTTP (`pkg/`): account, payments. Events over RabbitMQ (names in `core/events.go`).
