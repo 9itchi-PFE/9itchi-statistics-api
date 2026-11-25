@@ -123,3 +123,28 @@ func TestRevenueAndOverviewCarryTheSum(t *testing.T) {
 	require.Nil(t, apiErr)
 	require.Equal(t, int64(70000), all.Metrics["revenue_millimes"].Total)
 }
+
+// The steps between signing up and subscribing: each « first time » event counts one student for its day, whether
+// it is read from the queue or posted, and the dashboard carries the three figures.
+func TestFirstTimeEventsCountStudents(t *testing.T) {
+	counted := map[string]int{}
+	repo := &mocks.StatisticsRepository{
+		IncrementFunc: func(_ context.Context, name string, day time.Time) (*db.Metric, error) {
+			counted[name]++
+			return &db.Metric{Name: name, Day: day, Value: int64(counted[name])}, nil
+		},
+	}
+	svc := NewStatisticsService(repo)
+	for event, metric := range map[string]string{
+		core.EventCVFirstImported: "first_cv", core.EventPreferencesFirstSaved: "first_preferences", core.EventApplicationFirstSent: "first_application",
+	} {
+		require.NoError(t, svc.ConsumeEvent(context.Background(), event, map[string]any{"user_id": "u-1"}))
+		res, apiErr := svc.RecordEvent(context.Background(), api.EventRequest{Type: event})
+		require.Nil(t, apiErr)
+		require.Equal(t, metric, res.Name)
+		require.Equal(t, 2, counted[metric])
+		require.Contains(t, CountedEvents, event, "the queue is bound to it")
+		require.Contains(t, allMetricNames(), metric)
+	}
+	require.Len(t, counted, 3, "nothing else is counted for them")
+}

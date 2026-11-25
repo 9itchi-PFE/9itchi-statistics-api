@@ -28,6 +28,10 @@ const (
 	metricJobsMatched         = "jobs_matched"
 	metricSubscriptionCreated = "subscription_created"
 	metricPaymentCompleted    = "payment_completed"
+	// Students who did it for the first time that day: their first CV, what they look for, their first application.
+	metricFirstCV          = "first_cv"
+	metricFirstPreferences = "first_preferences"
+	metricFirstApplication = "first_application"
 	// metricRevenueMillimes sums what the completed payments brought, in millimes (1/1000 TND).
 	metricRevenueMillimes = "revenue_millimes"
 )
@@ -53,13 +57,16 @@ type statisticsService struct {
 func NewStatisticsService(repo repositories.StatisticsRepository) StatisticsService {
 	s := &statisticsService{repo: repo}
 	s.events = map[string]eventRecorder{
-		core.EventUserRegistered:      s.incrementer(metricUserRegistered),
-		core.EventEmailSent:           s.incrementer(metricEmailSent),
-		core.EventEmailFailed:         s.incrementer(metricEmailFailed),
-		core.EventEmailOpened:         s.incrementer(metricEmailOpened),
-		core.EventJobsMatched:         s.incrementer(metricJobsMatched),
-		core.EventSubscriptionCreated: s.incrementer(metricSubscriptionCreated),
-		core.EventPaymentCompleted:    s.incrementer(metricPaymentCompleted),
+		core.EventUserRegistered:        s.incrementer(metricUserRegistered),
+		core.EventEmailSent:             s.incrementer(metricEmailSent),
+		core.EventEmailFailed:           s.incrementer(metricEmailFailed),
+		core.EventEmailOpened:           s.incrementer(metricEmailOpened),
+		core.EventJobsMatched:           s.incrementer(metricJobsMatched),
+		core.EventSubscriptionCreated:   s.incrementer(metricSubscriptionCreated),
+		core.EventPaymentCompleted:      s.incrementer(metricPaymentCompleted),
+		core.EventCVFirstImported:       s.incrementer(metricFirstCV),
+		core.EventPreferencesFirstSaved: s.incrementer(metricFirstPreferences),
+		core.EventApplicationFirstSent:  s.incrementer(metricFirstApplication),
 	}
 	return s
 }
@@ -230,6 +237,9 @@ func allMetricNames() []string {
 		metricSubscriptionCreated,
 		metricPaymentCompleted,
 		metricRevenueMillimes,
+		metricFirstCV,
+		metricFirstPreferences,
+		metricFirstApplication,
 	}
 	sort.Strings(names)
 	return names
