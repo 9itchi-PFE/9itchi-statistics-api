@@ -148,3 +148,55 @@ func TestFirstTimeEventsCountStudents(t *testing.T) {
 	}
 	require.Len(t, counted, 3, "nothing else is counted for them")
 }
+
+type countingTx struct{ calls int }
+
+func (c *countingTx) WithTx(ctx context.Context, fn func(context.Context) error) error {
+	c.calls++
+	return fn(ctx)
+}
+
+func TestAnEventDeliveredTwiceIsCountedOnce(t *testing.T) {
+	var counted []string
+	var sums []int64
+	repo := &mocks.StatisticsRepository{
+		IncrementFunc: func(_ context.Context, name string, day time.Time) (*db.Metric, error) {
+			counted = append(counted, name)
+			return &db.Metric{Name: name, Day: day, Value: 1}, nil
+		},
+		AddFunc: func(_ context.Context, name string, day time.Time, amount int64) (*db.Metric, error) {
+			sums = append(sums, amount)
+			return &db.Metric{Name: name, Day: day, Value: amount}, nil
+		},
+	}
+	tx := &countingTx{}
+	svc := NewStatisticsService(repo, WithTransactor(tx))
+	ctx := context.Background()
+	paid := map[string]any{core.EventIDKey: "evt-1", "amount_millimes": float64(35000)}
+
+	require.NoError(t, svc.ConsumeEvent(ctx, core.EventPaymentCompleted, paid))
+	require.NoError(t, svc.ConsumeEvent(ctx, core.EventPaymentCompleted, paid), "a replay is not an error")
+	require.Equal(t, []string{"payment_completed"}, counted, "counted once")
+	require.Equal(t, []int64{35000}, sums, "its amount added once")
+	require.Equal(t, 2, tx.calls, "each delivery in its own transaction")
+
+	require.NoError(t, svc.ConsumeEvent(ctx, core.EventPaymentCompleted, map[string]any{core.EventIDKey: "evt-2"}))
+	require.NoError(t, svc.ConsumeEvent(ctx, core.EventPaymentCompleted, map[string]any{}), "an event without an id is counted")
+	require.Len(t, counted, 3)
+
+	repo.ClaimErr = errors.New("db down")
+	require.Error(t, svc.ConsumeEvent(ctx, core.EventEmailSent, map[string]any{core.EventIDKey: "evt-3"}), "asked again by the broker")
+	require.Len(t, counted, 3)
+}
+
+func TestRepliesAreCounted(t *testing.T) {
+	var counted []string
+	repo := &mocks.StatisticsRepository{IncrementFunc: func(_ context.Context, name string, day time.Time) (*db.Metric, error) {
+		counted = append(counted, name)
+		return &db.Metric{Name: name, Day: day, Value: 1}, nil
+	}}
+	require.NoError(t, NewStatisticsService(repo).ConsumeEvent(context.Background(), core.EventApplicationReplied, map[string]any{"user_id": "u1"}))
+	require.Equal(t, []string{"replies"}, counted)
+	require.Contains(t, CountedEvents, core.EventApplicationReplied)
+	require.Contains(t, allMetricNames(), "replies")
+}

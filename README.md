@@ -31,3 +31,9 @@ A handler error asks the broker for one more delivery; a second failure drops th
 cp .env.example .env
 go run main.go
 ```
+
+## Counted once
+
+Every event from the broker carries the id its publisher set (`_event_id`). It is recorded in `counted_events` (migration `0002`) in the same transaction as the count: an event delivered twice is counted once, and one whose count failed half way is counted whole when it comes again. An event without an id (sent to `POST /internal/events`) is counted each time.
+
+`application.replied` (a student marked an application as answered by the company) is counted as `replies`.
