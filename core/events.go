@@ -22,6 +22,8 @@ const (
 	EventCVFirstImported       = "cv.first_imported"
 	EventPreferencesFirstSaved = "preferences.first_saved"
 	EventApplicationFirstSent  = "application.first_sent"
+	// EventApplicationReplied: a student marked one of their applications as answered by the company.
+	EventApplicationReplied = "application.replied"
 )
 
 // Publisher sends domain events. Swap LogPublisher for a RabbitMQ implementation without touching services.

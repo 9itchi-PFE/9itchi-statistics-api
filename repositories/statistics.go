@@ -15,6 +15,8 @@ type StatisticsRepository interface {
 	// Add adds an amount (above 0) to a metric of a day: a sum, where Increment counts.
 	Add(ctx context.Context, name string, day time.Time, amount int64) (*db.Metric, error)
 	List(ctx context.Context, from, to time.Time) ([]db.Metric, error)
+	// Claim records that an event was counted: false when its id was already there (a second delivery).
+	Claim(ctx context.Context, eventID string) (bool, error)
 }
 
 type statisticsRepository struct {
@@ -56,4 +58,14 @@ func (r *statisticsRepository) List(ctx context.Context, from, to time.Time) ([]
 	}
 	metrics, err := pgx.CollectRows(rows, pgx.RowToStructByName[db.Metric])
 	return metrics, MapError(err)
+}
+
+func (r *statisticsRepository) Claim(ctx context.Context, eventID string) (bool, error) {
+	ctx, cancel := QueryTimeout(ctx)
+	defer cancel()
+	tag, err := r.store.Conn(ctx).Exec(ctx, `INSERT INTO counted_events (event_id) VALUES ($1) ON CONFLICT DO NOTHING`, eventID)
+	if err != nil {
+		return false, MapError(err)
+	}
+	return tag.RowsAffected() == 1, nil
 }

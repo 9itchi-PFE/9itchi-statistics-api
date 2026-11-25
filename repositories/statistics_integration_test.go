@@ -4,10 +4,12 @@ package repositories
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -54,4 +56,29 @@ func TestAddSumsByNameAndDay(t *testing.T) {
 	other, err := repo.Add(ctx, "revenue_millimes", day.AddDate(0, 0, 1), 1000)
 	require.NoError(t, err)
 	require.Equal(t, int64(1000), other.Value, "another day starts from nothing")
+}
+
+func TestClaimCountsAnEventOnce(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	repo := NewStatisticsRepository(store)
+
+	first, err := repo.Claim(ctx, "evt-1")
+	require.NoError(t, err)
+	assert.True(t, first)
+	again, err := repo.Claim(ctx, "evt-1")
+	require.NoError(t, err)
+	assert.False(t, again, "the second delivery")
+
+	// In a transaction that fails, the claim goes with the count: the next delivery counts it.
+	err = store.WithTx(ctx, func(ctx context.Context) error {
+		if _, err := repo.Claim(ctx, "evt-2"); err != nil {
+			return err
+		}
+		return errors.New("increment failed")
+	})
+	require.Error(t, err)
+	fresh, err := repo.Claim(ctx, "evt-2")
+	require.NoError(t, err)
+	assert.True(t, fresh)
 }

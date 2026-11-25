@@ -32,6 +32,8 @@ const (
 	metricFirstCV          = "first_cv"
 	metricFirstPreferences = "first_preferences"
 	metricFirstApplication = "first_application"
+	// metricReplies counts the applications marked as answered by the company that day.
+	metricReplies = "replies"
 	// metricRevenueMillimes sums what the completed payments brought, in millimes (1/1000 TND).
 	metricRevenueMillimes = "revenue_millimes"
 )
@@ -51,11 +53,24 @@ type StatisticsService interface {
 
 type statisticsService struct {
 	repo   repositories.StatisticsRepository
+	tx     repositories.Transactor
 	events map[string]eventRecorder
 }
 
-func NewStatisticsService(repo repositories.StatisticsRepository) StatisticsService {
+// Option configures the statistics service.
+type Option func(*statisticsService)
+
+// WithTransactor counts an event in one transaction: its id, its metric and, for a payment, its amount go
+// together or not at all, so a delivery that fails half way is counted whole when it comes again.
+func WithTransactor(tx repositories.Transactor) Option {
+	return func(s *statisticsService) { s.tx = tx }
+}
+
+func NewStatisticsService(repo repositories.StatisticsRepository, opts ...Option) StatisticsService {
 	s := &statisticsService{repo: repo}
+	for _, o := range opts {
+		o(s)
+	}
 	s.events = map[string]eventRecorder{
 		core.EventUserRegistered:        s.incrementer(metricUserRegistered),
 		core.EventEmailSent:             s.incrementer(metricEmailSent),
@@ -67,6 +82,7 @@ func NewStatisticsService(repo repositories.StatisticsRepository) StatisticsServ
 		core.EventCVFirstImported:       s.incrementer(metricFirstCV),
 		core.EventPreferencesFirstSaved: s.incrementer(metricFirstPreferences),
 		core.EventApplicationFirstSent:  s.incrementer(metricFirstApplication),
+		core.EventApplicationReplied:    s.incrementer(metricReplies),
 	}
 	return s
 }
@@ -93,7 +109,25 @@ func (s *statisticsService) RecordEvent(ctx context.Context, req api.EventReques
 	return mapping.MetricToEventResponse(metric), nil
 }
 
+// ConsumeEvent counts one event from the broker, once: an event whose id was already counted adds nothing.
 func (s *statisticsService) ConsumeEvent(ctx context.Context, event string, payload map[string]any) error {
+	if s.tx == nil {
+		return s.consume(ctx, event, payload)
+	}
+	return s.tx.WithTx(ctx, func(ctx context.Context) error { return s.consume(ctx, event, payload) })
+}
+
+func (s *statisticsService) consume(ctx context.Context, event string, payload map[string]any) error {
+	if id, _ := payload[core.EventIDKey].(string); id != "" {
+		fresh, err := s.repo.Claim(ctx, id)
+		if err != nil {
+			return err
+		}
+		if !fresh {
+			utils.Logger.Info("event already counted", zap.String("event", event))
+			return nil
+		}
+	}
 	req := api.EventRequest{Type: event}
 	if raw, exists := payload["ts"]; exists && raw != nil {
 		switch value := raw.(type) {
@@ -240,6 +274,7 @@ func allMetricNames() []string {
 		metricFirstCV,
 		metricFirstPreferences,
 		metricFirstApplication,
+		metricReplies,
 	}
 	sort.Strings(names)
 	return names

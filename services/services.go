@@ -14,6 +14,7 @@ var CountedEvents = []string{
 	core.EventUserRegistered, core.EventEmailSent, core.EventEmailFailed, core.EventEmailOpened,
 	core.EventJobsMatched, core.EventSubscriptionCreated, core.EventPaymentCompleted,
 	core.EventCVFirstImported, core.EventPreferencesFirstSaved, core.EventApplicationFirstSent,
+	core.EventApplicationReplied,
 }
 
 // Services holds service implementations and the peer clients they call.
@@ -24,7 +25,7 @@ type Services struct {
 
 func InitServices(config utils.AppConfig, repos *repositories.Repositories) *Services {
 	return &Services{
-		Statistics: NewStatisticsService(repos.Statistics),
+		Statistics: NewStatisticsService(repos.Statistics, WithTransactor(repos.Store)),
 		Consumer:   core.NewEventConsumer(config.RabbitMQURL, EventsQueue, CountedEvents),
 	}
 }
