@@ -15,7 +15,7 @@ Port `8090`, health `/health`. Daily counters are stored in PostgreSQL. Dashboar
 | GET | `/admin/statistics/revenue` | admin | Revenue |
 | POST | `/internal/events` | internal (`x-api-key`) | Increment a supported event counter |
 
-Dashboard responses contain totals and per-day series for each metric. The subscriptions route counts creation events; revenue represents completed payment count, not monetary amounts. Supported event types: `user.registered`, `email.sent`, `email.failed`, `email.opened`, `jobs.matched`, `subscription.created`, `payment.completed`.
+Dashboard responses contain totals and per-day series for each metric. The subscriptions route counts creation events; revenue returns `payment_completed` (how many payments) and `revenue_millimes` (what they brought, in millimes: the `amount_millimes` of each `payment.completed` read from RabbitMQ; a payment recorded through `POST /internal/events` carries no amount and only counts). Supported event types: `user.registered`, `email.sent`, `email.failed`, `email.opened`, `jobs.matched`, `subscription.created`, `payment.completed`.
 
 ## Events (RabbitMQ)
 

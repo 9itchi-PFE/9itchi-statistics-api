@@ -72,3 +72,54 @@ func TestDashboardProducesDenseDailySeriesAndValidatesRange(t *testing.T) {
 	_, apiErr = svc.Registrations(context.Background(), api.DateRangeQuery{From: "bad"})
 	require.Equal(t, http.StatusBadRequest, apiErr.Code)
 }
+
+func TestCompletedPaymentAlsoCountsWhatItBrought(t *testing.T) {
+	type added struct {
+		name   string
+		day    string
+		amount int64
+	}
+	var counted []string
+	var sums []added
+	repo := &mocks.StatisticsRepository{
+		IncrementFunc: func(_ context.Context, name string, day time.Time) (*db.Metric, error) {
+			counted = append(counted, name)
+			return &db.Metric{Name: name, Day: day, Value: 1}, nil
+		},
+		AddFunc: func(_ context.Context, name string, day time.Time, amount int64) (*db.Metric, error) {
+			sums = append(sums, added{name, day.UTC().Format(time.DateOnly), amount})
+			return &db.Metric{Name: name, Day: day, Value: amount}, nil
+		},
+	}
+	svc := NewStatisticsService(repo)
+	ctx := context.Background()
+
+	// As it arrives from RabbitMQ: a JSON number, with the day of the event.
+	require.NoError(t, svc.ConsumeEvent(ctx, core.EventPaymentCompleted, map[string]any{"amount_millimes": float64(35000), "ts": "2026-11-20T10:00:00Z"}))
+	// A payment a code covered entirely brings nothing; another event with an amount is not revenue.
+	require.NoError(t, svc.ConsumeEvent(ctx, core.EventPaymentCompleted, map[string]any{"amount_millimes": float64(0)}))
+	require.NoError(t, svc.ConsumeEvent(ctx, core.EventPaymentCompleted, map[string]any{}))
+	require.NoError(t, svc.ConsumeEvent(ctx, core.EventEmailSent, map[string]any{"amount_millimes": float64(999)}))
+
+	require.Equal(t, []string{"payment_completed", "payment_completed", "payment_completed", "email_sent"}, counted)
+	require.Equal(t, []added{{"revenue_millimes", "2026-11-20", 35000}}, sums)
+
+	repo.AddFunc = func(context.Context, string, time.Time, int64) (*db.Metric, error) { return nil, errors.New("db down") }
+	require.Error(t, svc.ConsumeEvent(ctx, core.EventPaymentCompleted, map[string]any{"amount_millimes": int64(1000)}), "asked again by the broker")
+}
+
+func TestRevenueAndOverviewCarryTheSum(t *testing.T) {
+	day := time.Date(2026, 11, 20, 0, 0, 0, 0, time.UTC)
+	repo := &mocks.StatisticsRepository{ListFunc: func(context.Context, time.Time, time.Time) ([]db.Metric, error) {
+		return []db.Metric{{Name: "revenue_millimes", Day: day, Value: 70000}, {Name: "payment_completed", Day: day, Value: 2}}, nil
+	}}
+	svc := NewStatisticsService(repo)
+	q := api.DateRangeQuery{From: "2026-11-19", To: "2026-11-21"}
+	rev, apiErr := svc.Revenue(context.Background(), q)
+	require.Nil(t, apiErr)
+	require.Equal(t, int64(70000), rev.Metrics["revenue_millimes"].Total)
+	require.Equal(t, int64(2), rev.Metrics["payment_completed"].Total)
+	all, apiErr := svc.Overview(context.Background(), q)
+	require.Nil(t, apiErr)
+	require.Equal(t, int64(70000), all.Metrics["revenue_millimes"].Total)
+}

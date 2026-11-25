@@ -31,8 +31,12 @@ func TestMain(m *testing.M) {
 
 	dataDir, _ := os.MkdirTemp("", "itchi-pg-data-")
 	runDir, _ := os.MkdirTemp("", "itchi-pg-run-")
-	pg := embeddedpostgres.NewDatabase(embeddedpostgres.DefaultConfig().
-		Version(embeddedpostgres.V16).Port(uint32(port)).DataPath(dataDir).RuntimePath(runDir))
+	cfg := embeddedpostgres.DefaultConfig().
+		Version(embeddedpostgres.V16).Port(uint32(port)).DataPath(dataDir).RuntimePath(runDir)
+	if bin := os.Getenv("PG_BINARIES"); bin != "" { // use local PostgreSQL 16 binaries instead of downloading them
+		cfg = cfg.BinariesPath(bin)
+	}
+	pg := embeddedpostgres.NewDatabase(cfg)
 	if err := pg.Start(); err != nil {
 		fmt.Println("embedded postgres:", err)
 		os.Exit(1)

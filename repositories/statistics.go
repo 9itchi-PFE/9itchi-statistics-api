@@ -12,6 +12,8 @@ import (
 // StatisticsRepository is the only layer that touches PostgreSQL for statistics data.
 type StatisticsRepository interface {
 	Increment(ctx context.Context, name string, day time.Time) (*db.Metric, error)
+	// Add adds an amount (above 0) to a metric of a day: a sum, where Increment counts.
+	Add(ctx context.Context, name string, day time.Time, amount int64) (*db.Metric, error)
 	List(ctx context.Context, from, to time.Time) ([]db.Metric, error)
 }
 
@@ -24,13 +26,17 @@ func NewStatisticsRepository(store *Store) StatisticsRepository {
 }
 
 func (r *statisticsRepository) Increment(ctx context.Context, name string, day time.Time) (*db.Metric, error) {
+	return r.Add(ctx, name, day, 1)
+}
+
+func (r *statisticsRepository) Add(ctx context.Context, name string, day time.Time, amount int64) (*db.Metric, error) {
 	ctx, cancel := QueryTimeout(ctx)
 	defer cancel()
 	rows, err := r.store.Conn(ctx).Query(ctx, `
 		INSERT INTO metrics (name, day, value)
-		VALUES ($1, $2::date, 1)
-		ON CONFLICT (name, day) DO UPDATE SET value = metrics.value + 1
-		RETURNING name, day, value`, name, day.UTC().Format(time.DateOnly))
+		VALUES ($1, $2::date, $3)
+		ON CONFLICT (name, day) DO UPDATE SET value = metrics.value + EXCLUDED.value
+		RETURNING name, day, value`, name, day.UTC().Format(time.DateOnly), amount)
 	if err != nil {
 		return nil, MapError(err)
 	}
