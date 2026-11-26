@@ -8,7 +8,7 @@ import (
 
 // Repositories holds every repository plus the shared Store (pool + transactions).
 type Repositories struct {
-	Store      *Store
+	Store        *Store
 	Statistics   StatisticsRepository
 	Integrations IntegrationRepository
 }
