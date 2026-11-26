@@ -19,13 +19,15 @@ var CountedEvents = []string{
 
 // Services holds service implementations and the peer clients they call.
 type Services struct {
-	Statistics StatisticsService
-	Consumer   core.EventConsumer
+	Statistics   StatisticsService
+	Integrations IntegrationService
+	Consumer     core.EventConsumer
 }
 
 func InitServices(config utils.AppConfig, repos *repositories.Repositories) *Services {
 	return &Services{
-		Statistics: NewStatisticsService(repos.Statistics, WithTransactor(repos.Store)),
-		Consumer:   core.NewEventConsumer(config.RabbitMQURL, EventsQueue, CountedEvents),
+		Statistics:   NewStatisticsService(repos.Statistics, WithTransactor(repos.Store)),
+		Integrations: NewIntegrationService(repos.Integrations, config),
+		Consumer:     core.NewEventConsumer(config.RabbitMQURL, EventsQueue, CountedEvents),
 	}
 }

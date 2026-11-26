@@ -9,7 +9,8 @@ import (
 // Repositories holds every repository plus the shared Store (pool + transactions).
 type Repositories struct {
 	Store      *Store
-	Statistics StatisticsRepository
+	Statistics   StatisticsRepository
+	Integrations IntegrationRepository
 }
 
 // InitRepositories connects to PostgreSQL, applies migrations and builds the repositories.
@@ -22,8 +23,9 @@ func InitRepositories(ctx context.Context, config utils.AppConfig) (*Repositorie
 		return nil, err
 	}
 	return &Repositories{
-		Store:      store,
-		Statistics: NewStatisticsRepository(store),
+		Store:        store,
+		Statistics:   NewStatisticsRepository(store),
+		Integrations: NewIntegrationRepository(store),
 	}, nil
 }
 
