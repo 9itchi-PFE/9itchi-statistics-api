@@ -31,12 +31,16 @@ func initializeRoutes(r *gin.Engine, services *services.Services) {
 		adminGroup.GET("/admin/statistics/emails", handlers.Emails(services.Statistics))
 		adminGroup.GET("/admin/statistics/subscriptions", handlers.Subscriptions(services.Statistics))
 		adminGroup.GET("/admin/statistics/revenue", handlers.Revenue(services.Statistics))
+		adminGroup.GET("/admin/integrations", handlers.ListIntegrations(services.Integrations))
+		adminGroup.PUT("/admin/integrations/:provider", handlers.UpdateIntegration(services.Integrations))
 	}
 
 	internalGroup := r.Group("/")
 	internalGroup.Use(InternalAPIKeyMiddleware())
 	{
 		internalGroup.POST("/internal/events", handlers.RecordEvent(services.Statistics))
+		internalGroup.POST("/internal/integrations/:provider/usage", handlers.RecordIntegrationUsage(services.Integrations))
+		internalGroup.GET("/internal/integrations/:provider/token", handlers.IntegrationToken(services.Integrations))
 	}
 
 	// Fallback
