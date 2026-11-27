@@ -5,13 +5,17 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"9itchi-statistics-api/models"
 	"9itchi-statistics-api/models/api"
 	"9itchi-statistics-api/models/db"
+	"9itchi-statistics-api/pkg/balance"
 	"9itchi-statistics-api/repositories"
 	"9itchi-statistics-api/utils"
+
+	"go.uber.org/zap"
 )
 
 const (
@@ -47,14 +51,36 @@ type IntegrationService interface {
 	Token(ctx context.Context, provider string) (*api.TokenResponse, *models.ApiError)
 }
 
+const (
+	balanceTTL     = 5 * time.Minute
+	balanceTimeout = 5 * time.Second
+)
+
 type integrationService struct {
 	repo   repositories.IntegrationRepository
 	config utils.AppConfig
 	now    func() time.Time
+	// fetchers read a provider's live balance (balance.Fetchers); client is their HTTP client.
+	fetchers map[string]balance.Fetcher
+	client   *http.Client
+
+	mu       sync.Mutex
+	balances map[string]cachedBalance
+}
+
+// cachedBalance keeps a provider answer (or its failure, as nil) for balanceTTL, so the page does not ask the
+// provider on every load.
+type cachedBalance struct {
+	value *api.Balance
+	at    time.Time
 }
 
 func NewIntegrationService(repo repositories.IntegrationRepository, config utils.AppConfig) IntegrationService {
-	return &integrationService{repo: repo, config: config, now: time.Now}
+	return &integrationService{
+		repo: repo, config: config, now: time.Now,
+		fetchers: balance.Fetchers, client: &http.Client{Timeout: balanceTimeout},
+		balances: map[string]cachedBalance{},
+	}
 }
 
 func (s *integrationService) month() time.Time {
@@ -93,7 +119,56 @@ func (s *integrationService) List(ctx context.Context) (*api.IntegrationsRespons
 	for _, i := range Integrations {
 		out.Integrations = append(out.Integrations, toIntegrationResponse(i, settingOf[i.Provider], usedOf[i.Provider]))
 	}
+	var wg sync.WaitGroup
+	for n := range out.Integrations {
+		r := &out.Integrations[n]
+		if _, ok := s.fetchers[r.Provider]; !ok {
+			continue
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			r.Balance = s.balance(ctx, r.Provider, settingOf[r.Provider])
+		}()
+	}
+	wg.Wait()
 	return out, nil
+}
+
+// balance is the provider's live balance, read with the admin token when one is set, else the env key; nil when
+// there is no key or the provider fails (logged with the provider name and the error only).
+func (s *integrationService) balance(ctx context.Context, provider string, st db.IntegrationSetting) *api.Balance {
+	s.mu.Lock()
+	c, ok := s.balances[provider]
+	s.mu.Unlock()
+	if ok && s.now().Sub(c.at) < balanceTTL {
+		return c.value
+	}
+	key := s.config.ProviderKeys[provider]
+	if st.TokenEnc != "" {
+		token, err := utils.Open(s.config, st.TokenEnc)
+		if err != nil {
+			utils.Logger.Error("open integration token failed", zap.String("provider", provider), zap.Error(err))
+			return nil
+		}
+		key = token
+	}
+	if key == "" {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, balanceTimeout)
+	defer cancel()
+	var value *api.Balance
+	b, err := s.fetchers[provider](ctx, s.client, key)
+	if err != nil {
+		utils.Logger.Warn("integration balance failed", zap.String("provider", provider), zap.Error(err))
+	} else {
+		value = &api.Balance{Left: b.Left, Limit: b.Limit, ResetsOn: b.ResetsOn}
+	}
+	s.mu.Lock()
+	s.balances[provider] = cachedBalance{value: value, at: s.now()}
+	s.mu.Unlock()
+	return value
 }
 
 func toIntegrationResponse(i Integration, st db.IntegrationSetting, used int64) api.IntegrationResponse {
@@ -146,6 +221,11 @@ func (s *integrationService) Update(ctx context.Context, provider string, req ap
 	}
 	if err := s.repo.SaveSetting(ctx, setting); err != nil {
 		return nil, internalError("save integration setting", err)
+	}
+	if req.Token != nil {
+		s.mu.Lock()
+		delete(s.balances, provider)
+		s.mu.Unlock()
 	}
 	usage, err := s.repo.ListUsage(ctx, s.month())
 	if err != nil {
