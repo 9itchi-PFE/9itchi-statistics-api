@@ -34,6 +34,8 @@ var Integrations = []Integration{
 	{Provider: "gemini", Label: "Gemini", Kind: KindAI, Unit: "tokens"},
 	{Provider: "openai", Label: "OpenAI", Kind: KindAI, Unit: "tokens"},
 	{Provider: "llamaindex", Label: "LlamaIndex Extract", Kind: KindPlugin, Unit: "documents"},
+	{Provider: "hunter", Label: "Hunter.io", Kind: KindPlugin, Unit: "credits"},
+	{Provider: "apollo", Label: "Apollo", Kind: KindPlugin, Unit: "credits"},
 }
 
 // IntegrationService tracks the monthly consumption of AI providers and plugins against their quota, and holds
