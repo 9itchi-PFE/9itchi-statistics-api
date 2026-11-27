@@ -2,11 +2,13 @@ package services
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"testing"
 	"time"
 
 	"9itchi-statistics-api/models/api"
+	"9itchi-statistics-api/pkg/balance"
 	"9itchi-statistics-api/services/mocks"
 	"9itchi-statistics-api/utils"
 
@@ -98,4 +100,62 @@ func TestIntegrationRejectsBadInput(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, apiErr.Code)
 	require.Equal(t, http.StatusNotFound, svc.RecordUsage(ctx, "nope", 1).Code)
 	require.Equal(t, http.StatusBadRequest, svc.RecordUsage(ctx, "gemini", 0).Code)
+}
+
+func TestIntegrationsListAddsLiveBalance(t *testing.T) {
+	repo := mocks.NewIntegrationRepository()
+	svc := NewIntegrationService(repo, utils.AppConfig{
+		EncryptionKey: "0123456789abcdef0123456789abcdef",
+		ProviderKeys:  map[string]string{"hunter": "env-hunter-key", "apollo": ""},
+	}).(*integrationService)
+	clock := time.Date(2026, 11, 26, 10, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return clock }
+	var keys []string
+	calls := 0
+	svc.fetchers = map[string]balance.Fetcher{
+		"hunter": func(_ context.Context, _ *http.Client, key string) (*balance.Balance, error) {
+			calls++
+			keys = append(keys, key)
+			return &balance.Balance{Left: 40, Limit: 50, ResetsOn: "2026-12-05"}, nil
+		},
+		"apollo": func(context.Context, *http.Client, string) (*balance.Balance, error) {
+			t.Fatal("apollo has no key: never asked")
+			return nil, nil
+		},
+	}
+	ctx := context.Background()
+
+	list, apiErr := svc.List(ctx)
+	require.Nil(t, apiErr)
+	byProvider := map[string]api.IntegrationResponse{}
+	for _, i := range list.Integrations {
+		byProvider[i.Provider] = i
+	}
+	require.Equal(t, &api.Balance{Left: 40, Limit: 50, ResetsOn: "2026-12-05"}, byProvider["hunter"].Balance)
+	require.Nil(t, byProvider["apollo"].Balance, "no key")
+	require.Nil(t, byProvider["gemini"].Balance, "no balance API")
+	require.Equal(t, []string{"env-hunter-key"}, keys)
+
+	// Cached for 5 minutes.
+	_, apiErr = svc.List(ctx)
+	require.Nil(t, apiErr)
+	require.Equal(t, 1, calls)
+
+	// An admin token wins over the env key and drops the cache.
+	_, apiErr = svc.Update(ctx, "hunter", api.UpdateIntegrationRequest{Token: ptr("admin-hunter-token")})
+	require.Nil(t, apiErr)
+	_, apiErr = svc.List(ctx)
+	require.Nil(t, apiErr)
+	require.Equal(t, []string{"env-hunter-key", "admin-hunter-token"}, keys)
+
+	// A provider failure is no balance, not an error, and is retried after the TTL.
+	svc.fetchers["hunter"] = func(context.Context, *http.Client, string) (*balance.Balance, error) {
+		calls++
+		return nil, errors.New("status 401")
+	}
+	clock = clock.Add(6 * time.Minute)
+	list, apiErr = svc.List(ctx)
+	require.Nil(t, apiErr)
+	require.Nil(t, list.Integrations[3].Balance)
+	require.Equal(t, 3, calls)
 }

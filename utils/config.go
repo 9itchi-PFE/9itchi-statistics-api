@@ -20,6 +20,9 @@ type AppConfig struct {
 	// InternalAPIKeyRequired (env INTERNAL_API_KEY_REQUIRED, default true); false = log and allow.
 	InternalAPIKeyRequired bool
 	RabbitMQURL            string
+	// ProviderKeys are the env API keys used to read a provider's live balance (HUNTER_API_KEY, APOLLO_API_KEY);
+	// a token set by an admin wins. Never log them.
+	ProviderKeys map[string]string
 }
 
 // LoadConfig loads configuration from environment variables.
@@ -35,6 +38,10 @@ func LoadConfig() AppConfig {
 		InternalAPIKey:         getStringWithDefault("INTERNAL_API_KEY", ""),
 		InternalAPIKeyRequired: getBoolWithDefault("INTERNAL_API_KEY_REQUIRED", true),
 		RabbitMQURL:            getStringWithDefault("RABBITMQ_URL", ""),
+		ProviderKeys: map[string]string{
+			"hunter": getStringWithDefault("HUNTER_API_KEY", ""),
+			"apollo": getStringWithDefault("APOLLO_API_KEY", ""),
+		},
 	}
 }
 
