@@ -13,7 +13,7 @@ Admin dashboard counters: daily rows in Postgres fed by RabbitMQ events. No Redi
 
 ## Routes
 - Admin: `GET /admin/statistics/overview|registrations|emails|subscriptions|revenue` with `from`, `to` (`YYYY-MM-DD`, default last 30 days, max 366). Credit tracker: `GET /admin/integrations` (month's `used`, `quota`, `percent`, `has_token`, `token_hint` per provider), `PUT /admin/integrations/:provider` (`{quota?, token?}`, `token: ""` removes it).
-- Internal: `POST /internal/events` (`{type, ts?}`, 400 on unknown type; no event id, no amount). `POST /internal/integrations/:provider/usage` (`{amount}`, 202) and `GET /internal/integrations/:provider/token` (404 = none set), called by ai-api. No user routes, no erase endpoint.
+- Internal: `POST /internal/events` (`{type, ts?}`, 400 on unknown type; no event id, no amount). `POST /internal/integrations/:provider/usage` (`{amount}`, 202) and `GET /internal/integrations/:provider/token` (404 = none set), called by ai-api and email-api. No user routes, no erase endpoint.
 
 ## Data, events
 - Tables: `metrics` (`name`, `day`, `value`, PK `(name, day)`), `counted_events` (`event_id` PK), `integration_settings` (`provider`, `quota`, `token_enc`, `token_hint`), `integration_usage` (PK `(provider, month)`, `used`). Latest `0003_integrations.sql`. Env: `RABBITMQ_URL`.
@@ -22,7 +22,7 @@ Admin dashboard counters: daily rows in Postgres fed by RabbitMQ events. No Redi
 
 ## Domain rules
 - Count once: consumer puts the message id in `_event_id`; `counted_events` claims it in the same tx (`WithTransactor`); replays add nothing.
-- Credit tracker: catalog in `services/integrations.go` (`gemini`, `openai` = tokens, `llamaindex` = documents; add a provider there). Usage is per UTC month, quota 0 = none. Tokens are sealed with AES-GCM (`utils.Seal`), never returned by an admin route, only by the internal token route. Only ai-api reports usage today; Mailgun and Ably are not tracked.
+- Credit tracker: catalog in `services/integrations.go` (`gemini`, `openai` = tokens, `llamaindex` = documents, `hunter`, `apollo` = credits; add a provider there). Usage is per UTC month, quota 0 = none. Tokens are sealed with AES-GCM (`utils.Seal`), never returned by an admin route, only by the internal token route. ai-api reports gemini/openai/llamaindex and email-api reports hunter/apollo (Recruiter Radar); Mailgun and Ably are not tracked.
 - Revenue = sum of `amount_millimes` (1/1000 TND) from `payment.completed`. No "active subscriptions" metric, only creations.
 - Funnel (registered -> CV -> preferences -> 1st application -> paid) counts events per period, not a cohort. Days are UTC.
 

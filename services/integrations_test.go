@@ -43,6 +43,17 @@ func TestIntegrationsListComputesUsageAgainstQuota(t *testing.T) {
 	llama := list.Integrations[2]
 	require.Equal(t, int64(5), llama.Used)
 	require.Zero(t, llama.Percent, "no quota set")
+
+	// Email-api reports the contact finders in credits.
+	require.Nil(t, svc.RecordUsage(ctx, "hunter", 1))
+	require.Nil(t, svc.RecordUsage(ctx, "apollo", 2))
+	list, apiErr = svc.List(ctx)
+	require.Nil(t, apiErr)
+	require.Equal(t, "hunter", list.Integrations[3].Provider)
+	require.Equal(t, "credits", list.Integrations[3].Unit)
+	require.Equal(t, int64(1), list.Integrations[3].Used)
+	require.Equal(t, "apollo", list.Integrations[4].Provider)
+	require.Equal(t, int64(2), list.Integrations[4].Used)
 }
 
 func TestIntegrationTokenIsSealedAndNeverListed(t *testing.T) {
