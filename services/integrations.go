@@ -40,6 +40,12 @@ var Integrations = []Integration{
 	{Provider: "llamaindex", Label: "LlamaIndex Extract", Kind: KindPlugin, Unit: "documents"},
 	{Provider: "hunter", Label: "Hunter.io", Kind: KindPlugin, Unit: "credits"},
 	{Provider: "apollo", Label: "Apollo", Kind: KindPlugin, Unit: "credits"},
+	{Provider: "quickenrich", Label: "QuickEnrich", Kind: KindPlugin, Unit: "credits"},
+	// Job boards read by job-api: one unit per API call (what each provider bills or rate-limits).
+	{Provider: "adzuna", Label: "Adzuna", Kind: KindPlugin, Unit: "calls"},
+	{Provider: "jsearch", Label: "JSearch (RapidAPI)", Kind: KindPlugin, Unit: "calls"},
+	{Provider: "theirstack", Label: "TheirStack", Kind: KindPlugin, Unit: "calls"},
+	{Provider: "careerjet", Label: "Careerjet", Kind: KindPlugin, Unit: "calls"},
 }
 
 // IntegrationService tracks the monthly consumption of AI providers and plugins against their quota, and holds
